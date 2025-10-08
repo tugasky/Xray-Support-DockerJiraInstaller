@@ -22,7 +22,7 @@ A comprehensive GUI application for installing Jira with Docker, featuring autom
 ### Option 2: Run from Source
 1. Ensure Python 3.7+ is installed
 2. Clone this repository
-3. Install dependencies: `pip install -r requirements.txt`
+3. Install build dependencies: `pip install -r requirements.txt`
 4. Run: `python jira_installer.py`
 
 ## Usage
@@ -99,6 +99,15 @@ If you need to create a new release:
 ### Permission Issues
 - Run as administrator if you encounter file permission errors
 - Check antivirus software isn't blocking the application
+
+### Python DLL Issues (Windows)
+If you encounter "failed to load python dll" errors:
+- **Microsoft Visual C++ Redistributables**: Ensure you have the latest Microsoft Visual C++ redistributables installed
+- **Python Version Compatibility**: Make sure you're using a compatible Python version (3.7-3.11)
+- **Antivirus Interference**: Some antivirus software may block DLL loading - try adding the executable to exclusions
+- **Rebuild Required**: If building from source, ensure you use the updated `pyinstaller.spec` configuration
+
+The latest builds include fixes for common Python DLL loading issues on Windows.
 
 ## Development
 

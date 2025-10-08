@@ -10,6 +10,15 @@ import subprocess
 import shutil
 from pathlib import Path
 
+# Import version from main script
+try:
+    sys.path.append('.')
+    import jira_installer
+    CURRENT_VERSION = jira_installer.CURRENT_VERSION
+except (ImportError, AttributeError):
+    # Fallback version if import fails
+    CURRENT_VERSION = "1.0.0"
+
 def run_command(cmd, shell=False):
     """Run a command and return the result"""
     try:
@@ -41,21 +50,39 @@ def build_executable():
     """Build the executable using PyInstaller"""
     print("Building executable...")
 
-    # Clean previous builds
-    if os.path.exists("dist"):
-        shutil.rmtree("dist")
-    if os.path.exists("build"):
-        shutil.rmtree("build")
+    # Clean previous builds more thoroughly
+    for dir_name in ["dist", "build", "__pycache__"]:
+        if os.path.exists(dir_name):
+            shutil.rmtree(dir_name)
+            print(f"Cleaned: {dir_name}")
 
-    # Run PyInstaller
+    # Also clean any .pyc files
+    for root, dirs, files in os.walk("."):
+        for file in files:
+            if file.endswith(".pyc"):
+                os.remove(os.path.join(root, file))
+
+    # Run PyInstaller (debugging options not valid with .spec files)
+    print("Running PyInstaller...")
     stdout, stderr, code = run_command(["pyinstaller", "--clean", "pyinstaller.spec"])
 
     if code != 0:
-        print(f"Build failed: {stderr}")
+        print(f"Build failed with code {code}")
+        print(f"STDOUT: {stdout}")
+        print(f"STDERR: {stderr}")
         return False
 
     print("Build completed successfully!")
-    return True
+
+    # Verify the executable was created
+    exe_path = "dist/jira_installer/jira_installer.exe"
+    if os.path.exists(exe_path):
+        exe_size = os.path.getsize(exe_path)
+        print(f"Executable created: {exe_path} ({exe_size:,}","bytes)")
+        return True
+    else:
+        print("Warning: Executable not found at expected location")
+        return False
 
 def create_release_structure():
     """Create release structure with executable and supporting files"""

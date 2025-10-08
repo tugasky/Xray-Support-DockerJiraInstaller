@@ -1,0 +1,11 @@
+# Runtime requirements for Jira Installer
+# These are the minimum requirements to run the application
+
+# Note: tkinter is usually included with Python, but listed for completeness
+# PyInstaller is only needed for building, not for running the application
+
+# For running the script (not needed for executable):
+# tkinter  # Usually included with Python
+
+# For building the executable:
+pyinstaller>=5.0
