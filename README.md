@@ -1,147 +1,68 @@
 # Docker Jira One-Click Installer for Xray Support
 
-A comprehensive GUI application for installing Jira with Docker, featuring automatic updates and advanced configuration options.
+A GUI application for installing Jira with Docker, featuring one-click installation and Xray testing framework optimization.
 
 ## Features
 
 - **One-Click Installation**: Install Jira 8.x, 9.x, 10.x, and 11.x with a single click
-- **Docker Integration**: Automated Docker container setup and configuration
-- **MySQL Support**: Built-in MySQL database setup for Jira 10+
-- **Advanced Configuration**: Customize ports, container names, database settings, and more
+- **Docker Integration**: Automated container setup and configuration
+- **MySQL Support**: Built-in database setup for Jira 10+
+- **Advanced Configuration**: Custom ports, container names, and database settings
 - **Automatic Updates**: Self-updating application with GitHub integration
-- **Progress Tracking**: Visual progress indicators and detailed logging
+- **Progress Tracking**: Visual indicators and detailed logging
 - **Xray Support**: Optimized for Xray testing framework integration
 
 ## Installation
 
-### Option 1: Download Pre-built Executable
-1. Go to the [Releases](https://github.com/tugasky/Xray-Support-DockerJiraInstaller/releases) page
-2. Download the latest `jira_installer.exe` file
-3. Run the executable
+### Quick Install
+1. Download `jira_installer.exe` from the [Releases](https://github.com/tugasky/Xray-Support-DockerJiraInstaller/releases) page
+2. Run the executable
 
-### Option 2: Run from Source
-1. Ensure Python 3.7+ is installed
-2. Clone this repository
-3. Install build dependencies: `pip install -r requirements.txt`
-4. Run: `python jira_installer.py`
+### From Source
+```bash
+pip install -r requirements.txt
+python jira_installer.py
+```
 
 ## Usage
 
-1. **Basic Installation**:
-   - Enter the desired Jira version (e.g., 10.0.0)
-   - Click "Install Jira"
-   - Follow the progress in the logs
+1. Enter Jira version (e.g., 10.0.0)
+2. Click "Install Jira"
+3. Monitor progress in the logs
 
-2. **Advanced Installation**:
-   - Enable "Advanced Mode" to access additional options
-   - Configure custom ports, container names, MySQL settings
-   - Customize JDBC driver versions
-
-3. **Check for Updates**:
-   - Click "Check for Updates" to see if a newer version is available
-   - Follow prompts to download and install updates automatically
-
-## Update System
-
-The application includes a built-in update system that:
-
-- **Checks for Updates**: Automatically detects new versions on GitHub
-- **Safe Installation**: Creates backups before updating
-- **Rollback Support**: Automatically restores previous version if update fails
-- **Progress Tracking**: Shows download and installation progress
-
-### Manual Update Process
-
-If you need to create a new release:
-
-1. **Update Version**: Edit `CURRENT_VERSION` in `jira_installer.py`
-2. **Build Executable**: Run `python build.py`
-3. **Create Release**: Upload the executable from `releases/v{version}/` to GitHub
+For advanced options, enable "Advanced Mode" to configure custom settings.
 
 ## Requirements
 
-### System Requirements
-- Windows 10/11, macOS, or Linux
-- Docker Desktop (Windows/Mac) or Docker Engine (Linux)
-- Internet connection for downloading Jira images
+- **System**: Windows 10/11, macOS, or Linux
+- **Docker**: Docker Desktop (Windows/Mac) or Docker Engine (Linux)
+- **Internet**: Required for downloading Jira images
+- **Python**: 3.7+ with tkinter and requests (for source installation)
 
-### Python Dependencies
-- tkinter (usually included with Python)
-- requests (for update system)
+## Jira Versions Supported
 
-## Configuration Options
-
-### Jira Versions Supported
-- **8.x**: Jira 8 with built-in database
-- **9.x**: Jira 9 with built-in database
-- **10.x**: Jira 10 with external MySQL database
-- **11.x**: Jira 11 with external MySQL database
-
-### Advanced Configuration
-- Custom ports (default: 8080 for Jira 10+, 8081 for older versions)
-- Custom container names
-- MySQL database configuration
-- JDBC driver versions
-- Network settings
+- **8.x & 9.x**: Built-in database
+- **10.x & 11.x**: External MySQL database
 
 ## Troubleshooting
 
-### Docker Issues
-- Ensure Docker Desktop is running
-- Check that ports are not already in use
-- Verify internet connection for image downloads
+### Common Issues
+- **Docker not running**: Ensure Docker Desktop is started
+- **Port conflicts**: Check if ports 8080/8081 are available
+- **No internet**: Required for downloading Jira Docker images
+- **Permission errors**: Run as administrator if needed
 
-### Update Issues
-- Check internet connection
-- Ensure sufficient disk space for downloads
-- Try manual download if automatic update fails
-
-### Permission Issues
-- Run as administrator if you encounter file permission errors
-- Check antivirus software isn't blocking the application
-
-### Python DLL Issues (Windows)
+### Windows DLL Issues
 If you encounter "failed to load python dll" errors:
-- **Microsoft Visual C++ Redistributables**: Ensure you have the latest Microsoft Visual C++ redistributables installed
-- **Python Version Compatibility**: Make sure you're using a compatible Python version (3.7-3.11)
-- **Antivirus Interference**: Some antivirus software may block DLL loading - try adding the executable to exclusions
-- **Rebuild Required**: If building from source, ensure you use the updated `pyinstaller.spec` configuration
-
-The latest builds include fixes for common Python DLL loading issues on Windows.
-
-## Development
-
-### Building from Source
-```bash
-# Install PyInstaller
-pip install pyinstaller
-
-# Build executable
-pyinstaller pyinstaller.spec
-
-# Or use the build script
-python build.py
-```
-
-### Project Structure
-```
-├── jira_installer.py      # Main application
-├── pyinstaller.spec       # PyInstaller configuration
-├── file_version_info.txt  # Version information
-├── build.py              # Build automation script
-├── jira.ico              # Application icon
-└── README.md             # This file
-```
+- Install latest Microsoft Visual C++ Redistributables
+- Use Python 3.7-3.11
+- Add executable to antivirus exclusions
 
 ## Support
 
 For support and questions:
 - Contact: João Silva (joao.silva@sembi.com)
 - GitHub Issues: [Report bugs and feature requests](https://github.com/tugasky/Xray-Support-DockerJiraInstaller/issues)
-
-## Credits
-
-Developed by João Silva (joao.silva@sembi.com) for Xray Support team.
 
 ## License
 
