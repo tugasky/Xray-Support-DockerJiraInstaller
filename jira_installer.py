@@ -22,7 +22,7 @@ JDBC_URL = f"https://dev.mysql.com/get/Downloads/Connector-J/{JDBC_TAR}"
 JDBC_FOLDER = f"mysql-connector-j-{JDBC_VERSION}"
 
 # Update System Constants
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.0.1"
 GITHUB_REPO = "tugasky/Xray-Support-DockerJiraInstaller"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_BACKUP_EXT = ".backup"
@@ -203,7 +203,7 @@ def hide_update_progress():
         pass
 
 def install_update(temp_path):
-    """Install the downloaded update"""
+    """Install the downloaded update using external updater"""
     try:
         current_path = get_executable_path()
 
@@ -215,21 +215,96 @@ def install_update(temp_path):
             log("Failed to create backup. Update cancelled.")
             return False
 
-        # Replace current file with new one
-        if os.path.exists(current_path):
-            os.remove(current_path)
+        # Prepare update package for the external updater
+        update_package = temp_path
+        backup_file = backup_path
 
-        shutil.move(temp_path, current_path)
-        log("Update installed successfully.")
+        # Launch external updater
+        log("Launching external updater...")
 
-        # Clean up backup after successful installation
-        try:
-            os.remove(backup_path)
-            log("Cleaned up backup file.")
-        except Exception:
-            pass
+        if os.name == 'nt':  # Windows
+            if getattr(sys, 'frozen', False):
+                # Running as PyInstaller executable
+                # Look for updater executable in the same directory
+                app_dir = os.path.dirname(current_path)
+                updater_exe = os.path.join(app_dir, "updater.exe")
 
-        return True
+                if os.path.exists(updater_exe):
+                    # Launch updater executable directly
+                    cmd = [
+                        updater_exe,
+                        "--main-app", current_path,
+                        "--update-package", update_package,
+                        "--backup", backup_file
+                    ]
+
+                    log(f"Launching updater executable: {' '.join(cmd)}")
+                    subprocess.Popen(cmd, creationflags=subprocess.DETACHED_PROCESS)
+
+                    log("Updater executable launched successfully.")
+                    run_on_ui(show_restart_required_message)
+                    return True
+                else:
+                    log("Updater executable not found.")
+                    restore_backup()
+                    return False
+            else:
+                # Running as script - look for updater executable
+                updater_exe = "updater.exe"
+                if os.path.exists(updater_exe):
+                    cmd = [
+                        updater_exe,
+                        "--main-app", current_path,
+                        "--update-package", update_package,
+                        "--backup", backup_file
+                    ]
+
+                    log(f"Launching updater executable: {' '.join(cmd)}")
+                    subprocess.Popen(cmd)
+
+                    log("Updater executable launched successfully.")
+                    run_on_ui(show_restart_required_message)
+                    return True
+                else:
+                    # Fallback to Python script if executable not found
+                    updater_path = "updater.py"
+                    if os.path.exists(updater_path):
+                        cmd = [
+                            sys.executable, updater_path,
+                            "--main-app", current_path,
+                            "--update-package", update_package,
+                            "--backup", backup_file
+                        ]
+
+                        log(f"Launching updater script: {' '.join(cmd)}")
+                        subprocess.Popen(cmd)
+
+                        log("Updater script launched successfully.")
+                        run_on_ui(show_restart_required_message)
+                        return True
+                    else:
+                        log("Neither updater executable nor script found.")
+                        restore_backup()
+                        return False
+        else:
+            # Unix-like systems
+            updater_path = "updater.py"
+            if os.path.exists(updater_path):
+                cmd = [
+                    sys.executable, updater_path,
+                    "--main-app", current_path,
+                    "--update-package", update_package,
+                    "--backup", backup_file
+                ]
+
+                subprocess.Popen(cmd)
+                log("Updater launched successfully.")
+                run_on_ui(show_restart_required_message)
+                return True
+            else:
+                log("Updater script not found.")
+                restore_backup()
+                return False
 
     except Exception as e:
         log(f"Failed to install update: {e}")
@@ -287,6 +362,14 @@ def show_update_success(new_version):
         "Please restart the application to use the new version."
     )
 
+def show_restart_required_message():
+    """Show message that restart is required to complete update"""
+    messagebox.showinfo(
+        "Restart Required",
+        "The update has been downloaded and prepared.\n\n"
+        "Please close and restart the application to complete the update installation."
+    )
+
 def check_and_prompt_update():
     """Check for updates and prompt user if available"""
     def task():
@@ -298,13 +381,19 @@ def check_and_prompt_update():
                 f"A new version ({update_info['version']}) is available.\n\n"
                 "Current version: {CURRENT_VERSION}\n"
                 f"Latest version: {update_info['version']}\n\n"
-                "Would you like to update now?\n\n"
-                "Note: The application will need to restart after the update."
+                "Would you like to open the release page to download the update?"
             ):
-                if perform_update(update_info):
-                    return
-                else:
-                    show_error_ui("Update Failed", "Failed to install the update. Please try again later or download manually from GitHub.")
+                # Open the release page in browser
+                release_url = f"https://github.com/{GITHUB_REPO}/releases/latest"
+                try:
+                    if os.name == 'nt':  # Windows
+                        os.startfile(release_url)
+                    else:  # macOS and Linux
+                        subprocess.run(['xdg-open', release_url])
+                    log(f"Opened release page: {release_url}")
+                except Exception as e:
+                    log(f"Failed to open release page: {e}")
+                    show_error_ui("Error", f"Failed to open release page.\n\nPlease visit: {release_url}")
         else:
             messagebox.showinfo("No Updates", "You have the latest version installed.")
 

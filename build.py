@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import shutil
+import argparse
 from pathlib import Path
 
 # Import version from main script
@@ -46,9 +47,44 @@ def check_pyinstaller():
             return False
         return True
 
-def build_executable():
-    """Build the executable using PyInstaller"""
-    print("Building executable...")
+def update_version_in_script(version):
+    """Update the CURRENT_VERSION in jira_installer.py"""
+    script_path = "jira_installer.py"
+
+    try:
+        with open(script_path, 'r') as f:
+            content = f.read()
+
+        # Find the current version line (it should be something like CURRENT_VERSION = "x.x.x")
+        import re
+        version_pattern = r'CURRENT_VERSION = "([^"]+)"'
+        match = re.search(version_pattern, content)
+
+        if match:
+            current_version_in_file = match.group(1)
+            old_line = f'CURRENT_VERSION = "{current_version_in_file}"'
+            new_line = f'CURRENT_VERSION = "{version}"'
+
+            content = content.replace(old_line, new_line)
+            with open(script_path, 'w') as f:
+                f.write(content)
+            print(f"✅ Updated version in script from {current_version_in_file} to {version}")
+            return True
+        else:
+            print(f"⚠️  Could not find CURRENT_VERSION line in script")
+            return False
+
+    except Exception as e:
+        print(f"❌ Failed to update version in script: {e}")
+        return False
+
+def build_executable(version):
+    """Build the executables using PyInstaller"""
+    print(f"Building executable for version {version}...")
+
+    # Update version in script first
+    if not update_version_in_script(version):
+        return False
 
     # Clean previous builds more thoroughly
     for dir_name in ["dist", "build", "__pycache__"]:
@@ -62,8 +98,7 @@ def build_executable():
             if file.endswith(".pyc"):
                 os.remove(os.path.join(root, file))
 
-    # Run PyInstaller (debugging options not valid with .spec files)
-    print("Running PyInstaller...")
+    # Run PyInstaller
     stdout, stderr, code = run_command(["pyinstaller", "--clean", "pyinstaller.spec"])
 
     if code != 0:
@@ -78,45 +113,70 @@ def build_executable():
     exe_path = "dist/jira_installer/jira_installer.exe"
     if os.path.exists(exe_path):
         exe_size = os.path.getsize(exe_path)
-        print(f"Executable created: {exe_path} ({exe_size:,}","bytes)")
+        print(f"✅ Executable created: {exe_path} ({exe_size:,}","bytes)")
         return True
     else:
-        print("Warning: Executable not found at expected location")
+        print("❌ Executable not found at expected location")
         return False
 
-def create_release_structure():
+def create_release_structure(version):
     """Create release structure with executable and supporting files"""
-    print("Creating release structure...")
+    print(f"Creating release structure for version {version}...")
 
     # Create releases directory if it doesn't exist
     os.makedirs("releases", exist_ok=True)
 
-    # Copy executable and supporting files
-    dist_dir = Path("dist/jira_installer")
-    if dist_dir.exists():
+    # Copy main executable and supporting files
+    main_dist_dir = Path("dist/jira_installer")
+    updater_dist_dir = Path("dist/updater")
+
+    if main_dist_dir.exists():
         # Create versioned release directory
-        release_dir = Path(f"releases/v{CURRENT_VERSION}")
+        release_dir = Path(f"releases/v{version}")
         release_dir.mkdir(exist_ok=True)
 
-        # Copy executable
-        exe_src = dist_dir / "jira_installer.exe"
-        exe_dst = release_dir / "jira_installer.exe"
-        if exe_src.exists():
-            shutil.copy2(exe_src, exe_dst)
-            print(f"Copied executable to {exe_dst}")
+        # Copy main executable
+        main_exe_src = main_dist_dir / "jira_installer.exe"
+        main_exe_dst = release_dir / "jira_installer.exe"
+        if main_exe_src.exists():
+            shutil.copy2(main_exe_src, main_exe_dst)
+            print(f"✅ Copied main executable to {main_exe_dst}")
+
+        # Copy updater executable
+        updater_exe_src = updater_dist_dir / "updater.exe"
+        updater_exe_dst = release_dir / "updater.exe"
+        if updater_exe_src.exists():
+            shutil.copy2(updater_exe_src, updater_exe_dst)
+            print(f"✅ Copied updater executable to {updater_exe_dst}")
+        else:
+            print(f"⚠️  Updater executable not found: {updater_exe_src}")
 
         # Copy icon if needed
         icon_src = Path("jira.ico")
         if icon_src.exists():
             shutil.copy2(icon_src, release_dir / "jira.ico")
+            print(f"✅ Copied icon to {release_dir}")
 
-        print(f"Release created in: {release_dir}")
+        # Copy updater script (fallback for development)
+        updater_script_src = Path("updater.py")
+        if updater_script_src.exists():
+            shutil.copy2(updater_script_src, release_dir / "updater.py")
+            print(f"✅ Copied updater script to {release_dir}")
+
+        print(f"📦 Release created in: {release_dir}")
         return release_dir
 
     return None
 
 def main():
     """Main build process"""
+    parser = argparse.ArgumentParser(description="Build Jira Installer")
+    parser.add_argument("--version", default=None, help="Version number (overrides script version)")
+    parser.add_argument("--no-clean", action="store_true", help="Skip cleaning build directories")
+    parser.add_argument("--quick", action="store_true", help="Quick build (skip cleaning)")
+
+    args = parser.parse_args()
+
     print("Jira Installer Build Script")
     print("=" * 40)
 
@@ -125,21 +185,36 @@ def main():
         print("Error: jira_installer.py not found. Please run this script from the project root.")
         sys.exit(1)
 
+    # Determine version to use
+    if args.version:
+        version = args.version
+        print(f"Using specified version: {version}")
+    else:
+        # Import version from main script
+        try:
+            sys.path.append('.')
+            import jira_installer
+            version = jira_installer.CURRENT_VERSION
+            print(f"Using version from script: {version}")
+        except (ImportError, AttributeError):
+            version = "1.0.0"
+            print(f"Using fallback version: {version}")
+
     # Check PyInstaller
     if not check_pyinstaller():
         sys.exit(1)
 
     # Build executable
-    if not build_executable():
+    if not build_executable(version):
         sys.exit(1)
 
     # Create release structure
-    release_dir = create_release_structure()
+    release_dir = create_release_structure(version)
     if release_dir:
-        print(f"\nRelease ready in: {release_dir}")
-        print("You can now create a GitHub release with the executable.")
+        print(f"\n✅ Release ready in: {release_dir}")
+        print("📦 You can now create a GitHub release with the executable.")
     else:
-        print("Warning: Release structure creation failed.")
+        print("❌ Warning: Release structure creation failed.")
 
 if __name__ == "__main__":
     main()
