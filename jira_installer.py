@@ -251,10 +251,10 @@ def check_and_pull_image(image):
         result = run_cmd_list(["docker", "pull", image], fatal=True)
         run_on_ui(stop_progress)
         if result is None:
-            log(f"❌ Failed to pull image {image}. Installation stopped.")
+            log(f"[FAIL] Failed to pull image {image}. Installation stopped.")
             run_on_ui(finish_steps_timing)
             return False
-        log(f"✅ Image '{image}' pulled successfully.")
+        log(f"[OK] Image '{image}' pulled successfully.")
     else:
         log(f"Image '{image}' already available locally.")
     return True
@@ -308,7 +308,7 @@ def init_steps_panel(steps):
         w.destroy()
     step_labels = []
     for idx, title in enumerate(steps):
-        lbl = tk.Label(steps_frame, text=f"⏳ {title}", anchor="w")
+        lbl = tk.Label(steps_frame, text=f"[RUNNING] {title}", anchor="w")
         lbl.pack(fill="x", padx=10, pady=1)
         step_labels.append(lbl)
     overall_steps_total = len(steps)
@@ -329,7 +329,7 @@ def set_step_running(index):
             except Exception:
                 pass
         title = current_steps[index]
-        step_labels[index].config(text=f"⏳ {title}", fg="black", font=(None, 9, 'bold'), bg="#fffbe6")
+        step_labels[index].config(text=f"[RUNNING] {title}", fg="black", font=(None, 9, 'bold'), bg="#fffbe6")
         current_step_index = index
         start_step_timer()
 
@@ -338,13 +338,13 @@ def set_step_done(index):
         title = current_steps[index]
         duration_txt = format_duration(get_and_clear_step_duration())
         suffix = f" ({duration_txt})" if duration_txt else ""
-        step_labels[index].config(text=f"✅ {title}{suffix}", fg="green", font=(None, 9, 'normal'), bg=root.cget('bg'))
+        step_labels[index].config(text=f"[DONE] {title}{suffix}", fg="green", font=(None, 9, 'normal'), bg=root.cget('bg'))
         increment_overall_progress()
 
 def set_step_error(index):
     if 0 <= index < len(step_labels):
         title = current_steps[index]
-        step_labels[index].config(text=f"❌ {title}", fg="red", font=(None, 9, 'normal'), bg=root.cget('bg'))
+        step_labels[index].config(text=f"[ERROR] {title}", fg="red", font=(None, 9, 'normal'), bg=root.cget('bg'))
         update_overall_progress()
 
 def start_step_timer():
@@ -590,11 +590,11 @@ def install_jira():
             if check_volume_exists(mysql_volume_name):
                 log(f"Volume '{mysql_volume_name}' already exists. Deleting it...")
                 if not delete_volume(mysql_volume_name):
-                    log(f"❌ Failed to delete existing volume '{mysql_volume_name}'. Installation stopped.")
+                    log(f"[FAIL] Failed to delete existing volume '{mysql_volume_name}'. Installation stopped.")
                     run_on_ui(set_step_error, step_index)
                     run_on_ui(finish_steps_timing)
                     return
-                log(f"✅ Existing volume '{mysql_volume_name}' deleted successfully.")
+                log(f"[OK] Existing volume '{mysql_volume_name}' deleted successfully.")
 
             log(f"Installing MySQL container '{mysql_container_name}' with custom credentials...")
             if not check_container_exists(mysql_container_name):
@@ -705,14 +705,14 @@ def install_jira():
         # Final logs
         step_index += 1
         run_on_ui(set_step_running, step_index)
-        log(f"✅ Jira {version} installation complete!")
+        log(f"[OK] Jira {version} installation complete!")
         if is_mysql:
-            log(f"➡ MySQL Host: {mysql_container_name}")
-            log(f"➡ DB: {mysql_db_name}")
-            log(f"➡ MySQL User: {mysql_user}")
-            log(f"➡ MySQL Password: {mysql_password}")
-        log(f"➡ Jira URL: http://localhost:{port}")
-        log(f"➡ Jira Login: admin/admin")
+            log(f"[INFO] MySQL Host: {mysql_container_name}")
+            log(f"[INFO] DB: {mysql_db_name}")
+            log(f"[INFO] MySQL User: {mysql_user}")
+            log(f"[INFO] MySQL Password: {mysql_password}")
+        log(f"[INFO] Jira URL: http://localhost:{port}")
+        log(f"[INFO] Jira Login: admin/admin")
         log("")
         run_on_ui(set_step_done, step_index)
         run_on_ui(finish_steps_timing)
@@ -893,7 +893,7 @@ advanced_container = tk.Frame(main_content)
 advanced_frame = tk.Frame(advanced_container)
 
 # ========== JIRA CONFIGURATION ==========
-tk.Label(advanced_frame, text="🔧 JIRA CONFIGURATION", font=("Arial", 10, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
+tk.Label(advanced_frame, text="[JIRA] CONFIGURATION", font=("Arial", 10, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="Port:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
 port_entry = tk.Entry(advanced_frame, width=10)
@@ -908,7 +908,7 @@ network_entry = tk.Entry(advanced_frame)
 network_entry.grid(row=3, column=1, sticky="w", padx=5, pady=2)
 
 # ========== MYSQL CONFIGURATION (Jira 10+) ==========
-tk.Label(advanced_frame, text="🗄️ MYSQL CONFIGURATION", font=("Arial", 10, "bold")).grid(row=4, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
+tk.Label(advanced_frame, text="[MYSQL] CONFIGURATION", font=("Arial", 10, "bold")).grid(row=4, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="MySQL Container Name:").grid(row=5, column=0, sticky="w", padx=5, pady=2)
 mysql_container_entry = tk.Entry(advanced_frame)
@@ -927,7 +927,7 @@ mysql_hostname_entry = tk.Entry(advanced_frame)
 mysql_hostname_entry.grid(row=8, column=1, sticky="w", padx=5, pady=2)
 
 # ========== MYSQL CREDENTIALS ==========
-tk.Label(advanced_frame, text="🔐 MYSQL CREDENTIALS", font=("Arial", 10, "bold")).grid(row=9, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
+tk.Label(advanced_frame, text="[CREDS] MYSQL CREDENTIALS", font=("Arial", 10, "bold")).grid(row=9, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="MySQL Root Password:").grid(row=10, column=0, sticky="w", padx=5, pady=2)
 mysql_root_password_entry = tk.Entry(advanced_frame)
@@ -945,7 +945,7 @@ mysql_password_entry.grid(row=12, column=1, sticky="w", padx=5, pady=2)
 mysql_password_entry.insert(0, "jira_password")
 
 # ========== MYSQL SETTINGS ==========
-tk.Label(advanced_frame, text="⚙️ MYSQL SETTINGS", font=("Arial", 10, "bold")).grid(row=13, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
+tk.Label(advanced_frame, text="[SETTINGS] MYSQL SETTINGS", font=("Arial", 10, "bold")).grid(row=13, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="MySQL Version:").grid(row=14, column=0, sticky="w", padx=5, pady=2)
 mysql_version_entry = tk.Entry(advanced_frame)
@@ -958,7 +958,7 @@ mysql_port_entry.grid(row=15, column=1, sticky="w", padx=5, pady=2)
 mysql_port_entry.insert(0, "3306")
 
 # ========== JDBC CONFIGURATION ==========
-tk.Label(advanced_frame, text="🔌 JDBC CONFIGURATION", font=("Arial", 10, "bold")).grid(row=16, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
+tk.Label(advanced_frame, text="[JDBC] CONFIGURATION", font=("Arial", 10, "bold")).grid(row=16, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="JDBC Version:").grid(row=17, column=0, sticky="w", padx=5, pady=2)
 jdbc_version_entry = tk.Entry(advanced_frame, width=10)
