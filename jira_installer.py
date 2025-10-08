@@ -9,12 +9,306 @@ import threading
 import queue
 import sys
 import time
+import json
+import hashlib
+import tempfile
+import shutil
+import platform
 
 # Constants
 JDBC_VERSION = "9.4.0"
 JDBC_TAR = f"mysql-connector-j-{JDBC_VERSION}.tar.gz"
 JDBC_URL = f"https://dev.mysql.com/get/Downloads/Connector-J/{JDBC_TAR}"
 JDBC_FOLDER = f"mysql-connector-j-{JDBC_VERSION}"
+
+# Update System Constants
+CURRENT_VERSION = "1.0.0"
+GITHUB_REPO = "tugasky/Xray-Support-DockerJiraInstaller"
+GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+UPDATE_BACKUP_EXT = ".backup"
+UPDATE_TEMP_EXT = ".tmp"
+
+# ---------- Update System Functions ----------
+def compare_versions(version1, version2):
+    """Compare two version strings. Returns -1 if version1 < version2, 0 if equal, 1 if version1 > version2"""
+    try:
+        v1_parts = [int(x) for x in version1.split('.')]
+        v2_parts = [int(x) for x in version2.split('.')]
+
+        # Pad the shorter version with zeros
+        max_len = max(len(v1_parts), len(v2_parts))
+        v1_parts.extend([0] * (max_len - len(v1_parts)))
+        v2_parts.extend([0] * (max_len - len(v2_parts)))
+
+        for i in range(max_len):
+            if v1_parts[i] < v2_parts[i]:
+                return -1
+            elif v1_parts[i] > v2_parts[i]:
+                return 1
+        return 0
+    except (ValueError, AttributeError):
+        # Fallback to string comparison if version format is unexpected
+        if version1 < version2:
+            return -1
+        elif version1 > version2:
+            return 1
+        return 0
+
+def check_for_updates():
+    """Check if updates are available on GitHub"""
+    try:
+        log(f"Checking for updates... (current version: {CURRENT_VERSION})")
+
+        # Create request with user agent to avoid GitHub API restrictions
+        req = urllib.request.Request(
+            GITHUB_API_URL,
+            headers={'User-Agent': 'Jira-Installer/1.0'}
+        )
+
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+
+        latest_version = data.get('tag_name', '').lstrip('v')  # Remove 'v' prefix if present
+
+        if not latest_version:
+            log("Unable to retrieve latest version information.")
+            return None
+
+        log(f"Latest version available: {latest_version}")
+
+        if compare_versions(CURRENT_VERSION, latest_version) < 0:
+            log(f"Update available: {CURRENT_VERSION} -> {latest_version}")
+            return {
+                'version': latest_version,
+                'release_data': data
+            }
+        else:
+            log("No updates available. You have the latest version.")
+            return None
+
+    except urllib.error.URLError as e:
+        log(f"Network error while checking for updates: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        log(f"Error parsing update information: {e}")
+        return None
+    except Exception as e:
+        log(f"Unexpected error checking for updates: {e}")
+        return None
+
+def get_executable_path():
+    """Get the path to the current executable"""
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable
+        return sys.executable
+    else:
+        # Running as script
+        return os.path.abspath(sys.argv[0])
+
+def create_backup():
+    """Create a backup of the current executable/script"""
+    try:
+        current_path = get_executable_path()
+        backup_path = current_path + UPDATE_BACKUP_EXT
+
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+            log(f"Removed old backup: {backup_path}")
+
+        shutil.copy2(current_path, backup_path)
+        log(f"Created backup: {backup_path}")
+        return backup_path
+
+    except Exception as e:
+        log(f"Failed to create backup: {e}")
+        return None
+
+def restore_backup():
+    """Restore from backup if update failed"""
+    try:
+        current_path = get_executable_path()
+        backup_path = current_path + UPDATE_BACKUP_EXT
+
+        if os.path.exists(backup_path):
+            if os.path.exists(current_path):
+                os.remove(current_path)
+            shutil.move(backup_path, current_path)
+            log("Restored from backup successfully.")
+            return True
+        else:
+            log("No backup found to restore.")
+            return False
+
+    except Exception as e:
+        log(f"Failed to restore backup: {e}")
+        return False
+
+def download_update(download_url, temp_path):
+    """Download update to temporary file"""
+    try:
+        log(f"Downloading update from: {download_url}")
+
+        # Create request with user agent
+        req = urllib.request.Request(
+            download_url,
+            headers={'User-Agent': 'Jira-Installer/1.0'}
+        )
+
+        with urllib.request.urlopen(req, timeout=30) as response:
+            total_size = int(response.headers.get('Content-Length', 0))
+
+            with open(temp_path, 'wb') as temp_file:
+                downloaded = 0
+                block_size = 8192
+
+                while True:
+                    buffer = response.read(block_size)
+                    if not buffer:
+                        break
+
+                    downloaded += len(buffer)
+                    temp_file.write(buffer)
+
+                    if total_size > 0:
+                        progress = int((downloaded / total_size) * 100)
+                        run_on_ui(update_download_progress, progress)
+
+        log(f"Download completed: {temp_path}")
+        return True
+
+    except Exception as e:
+        log(f"Failed to download update: {e}")
+        return False
+
+def update_download_progress(progress):
+    """Update download progress bar"""
+    try:
+        update_progress_bar["value"] = progress
+        update_progress_label.config(text=f"Downloading... {progress}%")
+    except Exception:
+        pass
+
+def show_update_progress():
+    """Show update progress UI"""
+    try:
+        update_progress_frame.pack(fill="x", padx=10, pady=(0, 10))
+    except Exception:
+        pass
+
+def hide_update_progress():
+    """Hide update progress UI"""
+    try:
+        update_progress_frame.pack_forget()
+    except Exception:
+        pass
+
+def install_update(temp_path):
+    """Install the downloaded update"""
+    try:
+        current_path = get_executable_path()
+
+        log("Installing update...")
+
+        # Create backup first
+        backup_path = create_backup()
+        if not backup_path:
+            log("Failed to create backup. Update cancelled.")
+            return False
+
+        # Replace current file with new one
+        if os.path.exists(current_path):
+            os.remove(current_path)
+
+        shutil.move(temp_path, current_path)
+        log("Update installed successfully.")
+
+        # Clean up backup after successful installation
+        try:
+            os.remove(backup_path)
+            log("Cleaned up backup file.")
+        except Exception:
+            pass
+
+        return True
+
+    except Exception as e:
+        log(f"Failed to install update: {e}")
+        return False
+
+def perform_update(update_info):
+    """Perform the complete update process"""
+    try:
+        # Get download URL for the executable
+        assets = update_info.get('release_data', {}).get('assets', [])
+        download_url = None
+
+        # Look for executable file
+        for asset in assets:
+            asset_name = asset.get('name', '').lower()
+            if asset_name.endswith('.exe') or 'jira-installer' in asset_name:
+                download_url = asset.get('browser_download_url')
+                break
+
+        if not download_url:
+            log("No suitable update file found in release.")
+            return False
+
+        # Create temporary file path
+        temp_dir = tempfile.gettempdir()
+        temp_filename = f"jira_installer_update_{int(time.time())}{UPDATE_TEMP_EXT}"
+        temp_path = os.path.join(temp_dir, temp_filename)
+
+        # Download update
+        if not download_update(download_url, temp_path):
+            return False
+
+        # Install update
+        if not install_update(temp_path):
+            # Try to restore backup if installation failed
+            restore_backup()
+            return False
+
+        # Show success message and ask for restart
+        log("Update completed successfully!")
+        run_on_ui(show_update_success, update_info.get('version'))
+
+        return True
+
+    except Exception as e:
+        log(f"Update failed: {e}")
+        restore_backup()
+        return False
+
+def show_update_success(new_version):
+    """Show update success message"""
+    messagebox.showinfo(
+        "Update Successful",
+        f"Application has been updated to version {new_version}.\n\n"
+        "Please restart the application to use the new version."
+    )
+
+def check_and_prompt_update():
+    """Check for updates and prompt user if available"""
+    def task():
+        update_info = check_for_updates()
+        if update_info:
+            # Show update available dialog
+            if ask_yes_no_on_ui(
+                "Update Available",
+                f"A new version ({update_info['version']}) is available.\n\n"
+                "Current version: {CURRENT_VERSION}\n"
+                f"Latest version: {update_info['version']}\n\n"
+                "Would you like to update now?\n\n"
+                "Note: The application will need to restart after the update."
+            ):
+                if perform_update(update_info):
+                    return
+                else:
+                    show_error_ui("Update Failed", "Failed to install the update. Please try again later or download manually from GitHub.")
+        else:
+            messagebox.showinfo("No Updates", "You have the latest version installed.")
+
+    threading.Thread(target=task).start()
 
 # ---------- Helper functions ----------
 # UI communication queue (producer from worker threads, consumer on main thread)
@@ -830,9 +1124,9 @@ def resize_window_to_content():
     elif content_height >= screen_height - 100:
         root.geometry(f"{int(window_width)}x{int(screen_height - 100)}")
 
-tk.Label(main_frame, text="Enter Jira Version (e.g., 8.15.0, 9.15.0, 10.2.6 or 11.0.0):").pack(padx=10, pady=5)
-version_entry = tk.Entry(main_frame)
-version_entry.pack(padx=10, pady=5)
+tk.Label(main_frame, text="Enter Jira Version (e.g., 8.15.0, 9.15.0, 10.2.6 or 11.0.0):").pack(padx=15, pady=5)
+version_entry = tk.Entry(main_frame, width=25)
+version_entry.pack(padx=15, pady=5)
 version_entry.insert(0, "10.0.0")
 
 # Update advanced configuration fields when version changes
@@ -844,16 +1138,20 @@ version_entry.bind('<KeyRelease>', on_version_change)
 
 
 
-# Buttons horizontal
+# Buttons horizontal with improved alignment and spacing
 button_frame = tk.Frame(main_frame)
-button_frame.pack(padx=10, pady=5)
-tk.Button(button_frame, text="Install Jira", command=install_jira).pack(side=tk.LEFT, padx=5)
-tk.Button(button_frame, text="View Docker Status", command=view_docker_status).pack(side=tk.LEFT, padx=5)
-tk.Button(button_frame, text="Clear Logs", command=clear_logs).pack(side=tk.LEFT, padx=5)
+button_frame.pack(padx=15, pady=10, fill="x")
+tk.Button(button_frame, text="Install Jira", command=install_jira).pack(side=tk.LEFT, padx=10, pady=5)
+tk.Button(button_frame, text="View Docker Status", command=view_docker_status).pack(side=tk.LEFT, padx=10, pady=5)
+tk.Button(button_frame, text="Clear Logs", command=clear_logs).pack(side=tk.LEFT, padx=10, pady=5)
+tk.Button(button_frame, text="Check for Updates", command=check_and_prompt_update).pack(side=tk.LEFT, padx=10, pady=5)
 
 # Main content area with logs and advanced options side by side
 main_content = tk.Frame(main_frame)
-main_content.pack(fill="both", expand=True, padx=10, pady=5)
+main_content.pack(fill="both", expand=True, padx=15, pady=10)
+# Configure column weights for proper expansion
+main_content.columnconfigure(0, weight=1)  # Left column (logs)
+main_content.columnconfigure(1, weight=1)  # Right column (advanced)
 
 # Left side - Logs
 logs_container = tk.Frame(main_content)
@@ -892,77 +1190,81 @@ log_text.pack(padx=10, pady=(0,10), fill="both", expand=True)
 advanced_container = tk.Frame(main_content)
 advanced_frame = tk.Frame(advanced_container)
 
+# Configure grid weights for proper column alignment
+advanced_frame.columnconfigure(1, weight=1)  # Make entry column expandable
+advanced_frame.columnconfigure(0, minsize=140)  # Set minimum label column width
+
 # ========== JIRA CONFIGURATION ==========
 tk.Label(advanced_frame, text="[JIRA] CONFIGURATION", font=("Arial", 10, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="Port:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
-port_entry = tk.Entry(advanced_frame, width=10)
-port_entry.grid(row=1, column=1, sticky="w", padx=5, pady=2)
+port_entry = tk.Entry(advanced_frame, width=20)
+port_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
 
 tk.Label(advanced_frame, text="Jira Container Name:").grid(row=2, column=0, sticky="w", padx=5, pady=2)
-jira_container_entry = tk.Entry(advanced_frame)
-jira_container_entry.grid(row=2, column=1, sticky="w", padx=5, pady=2)
+jira_container_entry = tk.Entry(advanced_frame, width=20)
+jira_container_entry.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
 
 tk.Label(advanced_frame, text="Network Name:").grid(row=3, column=0, sticky="w", padx=5, pady=2)
-network_entry = tk.Entry(advanced_frame)
-network_entry.grid(row=3, column=1, sticky="w", padx=5, pady=2)
+network_entry = tk.Entry(advanced_frame, width=20)
+network_entry.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
 
 # ========== MYSQL CONFIGURATION (Jira 10+) ==========
 tk.Label(advanced_frame, text="[MYSQL] CONFIGURATION", font=("Arial", 10, "bold")).grid(row=4, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="MySQL Container Name:").grid(row=5, column=0, sticky="w", padx=5, pady=2)
-mysql_container_entry = tk.Entry(advanced_frame)
-mysql_container_entry.grid(row=5, column=1, sticky="w", padx=5, pady=2)
+mysql_container_entry = tk.Entry(advanced_frame, width=20)
+mysql_container_entry.grid(row=5, column=1, sticky="ew", padx=5, pady=2)
 
 tk.Label(advanced_frame, text="Database Name:").grid(row=6, column=0, sticky="w", padx=5, pady=2)
-db_name_entry = tk.Entry(advanced_frame)
-db_name_entry.grid(row=6, column=1, sticky="w", padx=5, pady=2)
+db_name_entry = tk.Entry(advanced_frame, width=20)
+db_name_entry.grid(row=6, column=1, sticky="ew", padx=5, pady=2)
 
 tk.Label(advanced_frame, text="MySQL Volume Name:").grid(row=7, column=0, sticky="w", padx=5, pady=2)
-mysql_volume_entry = tk.Entry(advanced_frame)
-mysql_volume_entry.grid(row=7, column=1, sticky="w", padx=5, pady=2)
+mysql_volume_entry = tk.Entry(advanced_frame, width=20)
+mysql_volume_entry.grid(row=7, column=1, sticky="ew", padx=5, pady=2)
 
 tk.Label(advanced_frame, text="MySQL Hostname:").grid(row=8, column=0, sticky="w", padx=5, pady=2)
-mysql_hostname_entry = tk.Entry(advanced_frame)
-mysql_hostname_entry.grid(row=8, column=1, sticky="w", padx=5, pady=2)
+mysql_hostname_entry = tk.Entry(advanced_frame, width=20)
+mysql_hostname_entry.grid(row=8, column=1, sticky="ew", padx=5, pady=2)
 
 # ========== MYSQL CREDENTIALS ==========
 tk.Label(advanced_frame, text="[CREDS] MYSQL CREDENTIALS", font=("Arial", 10, "bold")).grid(row=9, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="MySQL Root Password:").grid(row=10, column=0, sticky="w", padx=5, pady=2)
-mysql_root_password_entry = tk.Entry(advanced_frame)
-mysql_root_password_entry.grid(row=10, column=1, sticky="w", padx=5, pady=2)
+mysql_root_password_entry = tk.Entry(advanced_frame, width=20)
+mysql_root_password_entry.grid(row=10, column=1, sticky="ew", padx=5, pady=2)
 mysql_root_password_entry.insert(0, "root_password")
 
 tk.Label(advanced_frame, text="MySQL Username:").grid(row=11, column=0, sticky="w", padx=5, pady=2)
-mysql_user_entry = tk.Entry(advanced_frame)
-mysql_user_entry.grid(row=11, column=1, sticky="w", padx=5, pady=2)
+mysql_user_entry = tk.Entry(advanced_frame, width=20)
+mysql_user_entry.grid(row=11, column=1, sticky="ew", padx=5, pady=2)
 mysql_user_entry.insert(0, "jira_user")
 
 tk.Label(advanced_frame, text="MySQL Password:").grid(row=12, column=0, sticky="w", padx=5, pady=2)
-mysql_password_entry = tk.Entry(advanced_frame)
-mysql_password_entry.grid(row=12, column=1, sticky="w", padx=5, pady=2)
+mysql_password_entry = tk.Entry(advanced_frame, width=20)
+mysql_password_entry.grid(row=12, column=1, sticky="ew", padx=5, pady=2)
 mysql_password_entry.insert(0, "jira_password")
 
 # ========== MYSQL SETTINGS ==========
 tk.Label(advanced_frame, text="[SETTINGS] MYSQL SETTINGS", font=("Arial", 10, "bold")).grid(row=13, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="MySQL Version:").grid(row=14, column=0, sticky="w", padx=5, pady=2)
-mysql_version_entry = tk.Entry(advanced_frame)
-mysql_version_entry.grid(row=14, column=1, sticky="w", padx=5, pady=2)
+mysql_version_entry = tk.Entry(advanced_frame, width=20)
+mysql_version_entry.grid(row=14, column=1, sticky="ew", padx=5, pady=2)
 mysql_version_entry.insert(0, "mysql:8.0")
 
 tk.Label(advanced_frame, text="MySQL Port:").grid(row=15, column=0, sticky="w", padx=5, pady=2)
-mysql_port_entry = tk.Entry(advanced_frame, width=6)
-mysql_port_entry.grid(row=15, column=1, sticky="w", padx=5, pady=2)
+mysql_port_entry = tk.Entry(advanced_frame, width=20)
+mysql_port_entry.grid(row=15, column=1, sticky="ew", padx=5, pady=2)
 mysql_port_entry.insert(0, "3306")
 
 # ========== JDBC CONFIGURATION ==========
 tk.Label(advanced_frame, text="[JDBC] CONFIGURATION", font=("Arial", 10, "bold")).grid(row=16, column=0, columnspan=2, sticky="w", padx=5, pady=(10,5))
 
 tk.Label(advanced_frame, text="JDBC Version:").grid(row=17, column=0, sticky="w", padx=5, pady=2)
-jdbc_version_entry = tk.Entry(advanced_frame, width=10)
-jdbc_version_entry.grid(row=17, column=1, sticky="w", padx=5, pady=2)
+jdbc_version_entry = tk.Entry(advanced_frame, width=20)
+jdbc_version_entry.grid(row=17, column=1, sticky="ew", padx=5, pady=2)
 jdbc_version_entry.insert(0, JDBC_VERSION)
 
 advanced_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -998,6 +1300,14 @@ progress_label.pack(anchor="w", padx=10, pady=(0, 5))
 progress_bar = ttk.Progressbar(progress_frame, mode="indeterminate", length=300)
 progress_bar.pack(fill="x", padx=10, pady=(0, 10))
 progress_frame.pack_forget()
+
+# Update progress UI (for update downloads)
+update_progress_frame = tk.Frame(steps_container)
+update_progress_label = tk.Label(update_progress_frame, text="Checking for updates...")
+update_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
+update_progress_bar = ttk.Progressbar(update_progress_frame, mode="determinate", length=300, maximum=100)
+update_progress_bar.pack(fill="x", padx=10, pady=(0, 10))
+update_progress_frame.pack_forget()
 
 # Overall progress bar inside steps container
 overall_progress_container = tk.Frame(steps_container)
